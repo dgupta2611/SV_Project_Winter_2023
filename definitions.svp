@@ -1,0 +1,31 @@
+package definitions;
+
+//-----------------------------------------------------------------
+// Key Params
+//-----------------------------------------------------------------
+
+	// Special Purpose Address Bits
+	parameter AUTO_PRECHARGE_BIT     = 10;
+	parameter ALL_BANKS_BIT          = 10;
+
+	// Widths	
+	parameter SDRAM_ADDR_W           = 24;
+	parameter SDRAM_DATA_W           = 16;
+ 	parameter SDRAM_BANK_W           = 2;
+ 	parameter SDRAM_COL_W            = 9;
+ 	parameter SDRAM_ROW_W            = SDRAM_ADDR_W - SDRAM_COL_W - SDRAM_BANK_W;
+ 	parameter SDRAM_DQM_W            = 2;
+ 	
+	parameter SDRAM_BANKS            = 2 ** SDRAM_BANK_W;	
+
+	// SDRAM timing
+	parameter SDRAM_MHZ              = 50;
+	parameter CYCLE_TIME_NS          = 1000 / SDRAM_MHZ;
+	parameter SDRAM_READ_LATENCY     = 2;	
+	parameter SDRAM_TRCD_CYCLES 	 = (20 + (CYCLE_TIME_NS-1)) / CYCLE_TIME_NS;
+	parameter SDRAM_TRP_CYCLES  	 = (20 + (CYCLE_TIME_NS-1)) / CYCLE_TIME_NS;
+	parameter SDRAM_TRFC_CYCLES 	 = (60 + (CYCLE_TIME_NS-1)) / CYCLE_TIME_NS;
+	parameter SDRAM_START_DELAY      = 100000 / (1000 / SDRAM_MHZ); // 100uS
+	parameter SDRAM_REFRESH_CYCLES   = ((64000*SDRAM_MHZ) / (2 ** SDRAM_ROW_W))-1;
+
+endpackage

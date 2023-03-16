@@ -35,53 +35,38 @@
 module sdram_axi_core
 (
     // Inputs
-     input           clk_i
-    ,input           rst_i
-    ,input  [  3:0]  inport_wr_i
-    ,input           inport_rd_i
-    ,input  [  7:0]  inport_len_i
-    ,input  [ 31:0]  inport_addr_i
-    ,input  [ 31:0]  inport_write_data_i
-    ,input  [ 15:0]  sdram_data_input_i
+    input           clk_i,
+    input           rst_i,
+    input  [  3:0]  inport_wr_i,
+    input           inport_rd_i,
+    input  [  7:0]  inport_len_i,
+    input  [ 31:0]  inport_addr_i,
+    input  [ 31:0]  inport_write_data_i,
+    input  [ 15:0]  sdram_data_input_i,
 
     // Outputs
-    ,output          inport_accept_o
-    ,output          inport_ack_o
-    ,output          inport_error_o
-    ,output [ 31:0]  inport_read_data_o
-    ,output          sdram_clk_o
-    ,output          sdram_cke_o
-    ,output          sdram_cs_o
-    ,output          sdram_ras_o
-    ,output          sdram_cas_o
-    ,output          sdram_we_o
-    ,output [  1:0]  sdram_dqm_o
-    ,output [ 12:0]  sdram_addr_o
-    ,output [  1:0]  sdram_ba_o
-    ,output [ 15:0]  sdram_data_output_o
-    ,output          sdram_data_out_en_o
+    output          inport_accept_o,
+    output          inport_ack_o,
+    output          inport_error_o,
+    output [ 31:0]  inport_read_data_o,
+    output          sdram_clk_o,
+    output          sdram_cke_o,
+    output          sdram_cs_o,
+    output          sdram_ras_o,
+    output          sdram_cas_o,
+    output          sdram_we_o,
+    output [  1:0]  sdram_dqm_o,
+    output [ 12:0]  sdram_addr_o,
+    output [  1:0]  sdram_ba_o,
+    output [ 15:0]  sdram_data_output_o,
+    output          sdram_data_out_en_o
 );
 
-
-
-//-----------------------------------------------------------------
-// Key Params
-//-----------------------------------------------------------------
-parameter SDRAM_MHZ              = 50;
-parameter SDRAM_ADDR_W           = 24;
-parameter SDRAM_COL_W            = 9;
-parameter SDRAM_READ_LATENCY     = 2;
+import definitions::*;
 
 //-----------------------------------------------------------------
 // Defines / Local params
 //-----------------------------------------------------------------
-localparam SDRAM_BANK_W          = 2;
-localparam SDRAM_DQM_W           = 2;
-localparam SDRAM_BANKS           = 2 ** SDRAM_BANK_W;
-localparam SDRAM_ROW_W           = SDRAM_ADDR_W - SDRAM_COL_W - SDRAM_BANK_W;
-localparam SDRAM_REFRESH_CNT     = 2 ** SDRAM_ROW_W;
-localparam SDRAM_START_DELAY     = 100000 / (1000 / SDRAM_MHZ); // 100uS
-localparam SDRAM_REFRESH_CYCLES  = (64000*SDRAM_MHZ) / SDRAM_REFRESH_CNT-1;
 
 localparam CMD_W             = 4;
 localparam CMD_NOP           = 4'b0111;
@@ -108,18 +93,6 @@ localparam STATE_WRITE0      = 4'd6;
 localparam STATE_WRITE1      = 4'd7;
 localparam STATE_PRECHARGE   = 4'd8;
 localparam STATE_REFRESH     = 4'd9;
-
-localparam AUTO_PRECHARGE    = 10;
-localparam ALL_BANKS         = 10;
-
-localparam SDRAM_DATA_W      = 16;
-
-localparam CYCLE_TIME_NS     = 1000 / SDRAM_MHZ;
-
-// SDRAM timing
-localparam SDRAM_TRCD_CYCLES = (20 + (CYCLE_TIME_NS-1)) / CYCLE_TIME_NS;
-localparam SDRAM_TRP_CYCLES  = (20 + (CYCLE_TIME_NS-1)) / CYCLE_TIME_NS;
-localparam SDRAM_TRFC_CYCLES = (60 + (CYCLE_TIME_NS-1)) / CYCLE_TIME_NS;
 
 //-----------------------------------------------------------------
 // External Interface
@@ -526,7 +499,7 @@ begin
         begin
             // Precharge all banks
             command_q           <= CMD_PRECHARGE;
-            addr_q[ALL_BANKS]   <= 1'b1;
+            addr_q[ALL_BANKS_BIT]   <= 1'b1;
         end
         // 2 x REFRESH (with at least tREF wait)
         else if (refresh_timer_q == 20 || refresh_timer_q == 30)
@@ -570,14 +543,14 @@ begin
         begin
             // Precharge all banks
             command_q           <= CMD_PRECHARGE;
-            addr_q[ALL_BANKS]   <= 1'b1;
+            addr_q[ALL_BANKS_BIT]   <= 1'b1;
             row_open_q          <= {SDRAM_BANKS{1'b0}};
         end
         else
         begin
             // Precharge specific banks
             command_q           <= CMD_PRECHARGE;
-            addr_q[ALL_BANKS]   <= 1'b0;
+            addr_q[ALL_BANKS_BIT]   <= 1'b0;
             bank_q              <= addr_bank_w;
 
             row_open_q[addr_bank_w] <= 1'b0;
@@ -603,7 +576,7 @@ begin
         bank_q      <= addr_bank_w;
 
         // Disable auto precharge (auto close of row)
-        addr_q[AUTO_PRECHARGE]  <= 1'b0;
+        addr_q[AUTO_PRECHARGE_BIT]  <= 1'b0;
 
         // Read mask (all bytes in burst)
         dqm_q       <= {SDRAM_DQM_W{1'b0}};
@@ -619,7 +592,7 @@ begin
         data_q          <= ram_write_data_w[15:0];
 
         // Disable auto precharge (auto close of row)
-        addr_q[AUTO_PRECHARGE]  <= 1'b0;
+        addr_q[AUTO_PRECHARGE_BIT]  <= 1'b0;
 
         // Write mask
         dqm_q           <= ~ram_wr_w[1:0];
@@ -638,7 +611,7 @@ begin
         data_q      <= data_buffer_q;
 
         // Disable auto precharge (auto close of row)
-        addr_q[AUTO_PRECHARGE]  <= 1'b0;
+        addr_q[AUTO_PRECHARGE_BIT]  <= 1'b0;
 
         // Write mask
         dqm_q       <= dqm_buffer_q;
