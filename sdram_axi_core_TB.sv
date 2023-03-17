@@ -39,10 +39,10 @@ import definitions::*;
     // Inputs
     logic           clk_i;
     logic           rst_i;
-    logic  [  3:0]  inport_wr_i;
-    logic           inport_rd_i;
+    logic  [  3:0]  inport_wr_i = 0;
+    logic           inport_rd_i = 0;
     logic  [  7:0]  inport_len_i;
-    logic  [ 31:0]  inport_addr_i;
+    logic  [ 31:0]  inport_addr_i = 0;
     logic  [ 31:0]  inport_write_data_i;
     logic  [ 15:0]  sdram_data_input_i;
 
@@ -79,7 +79,11 @@ initial begin
     #((SDRAM_START_DELAY+200)*CYCLE_TIME_NS);
     $display("SDRAM Ready");
 
+    inport_rd_i = 1;
+    repeat(2) @(posedge clk_i); 
+    inport_rd_i = 0;
     
+    repeat(20) @(posedge clk_i);
     
     $stop;
 
