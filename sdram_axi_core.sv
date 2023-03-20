@@ -100,15 +100,22 @@ localparam STATE_REFRESH     = 4'd9;
 //-----------------------------------------------------------------
 // External Interface
 //-----------------------------------------------------------------
-logic [ 31:0]  ram_addr_w       = inport_addr_i;
-logic [  3:0]  ram_wr_w         = inport_wr_i;
-logic          ram_rd_w         = inport_rd_i;
+logic [ 31:0]  ram_addr_w;
+logic [  3:0]  ram_wr_w;
+logic          ram_rd_w;
 logic          ram_accept_w;
-logic [ 31:0]  ram_write_data_w = inport_write_data_i;
+logic [ 31:0]  ram_write_data_w;
 logic [ 31:0]  ram_read_data_w;
 logic          ram_ack_w;
 
-logic          ram_req_w = (ram_wr_w != 4'b0) | ram_rd_w;
+logic          ram_req_w;
+
+assign ram_addr_w       = inport_addr_i;
+assign ram_wr_w         = inport_wr_i;
+assign ram_rd_w         = inport_rd_i;
+assign ram_write_data_w = inport_write_data_i;
+
+assign ram_req_w = (ram_wr_w != 4'b0) | ram_rd_w;
 
 assign inport_ack_o       = ram_ack_w;
 assign inport_read_data_o = ram_ack_w ? ram_read_data_w : 'd0;
@@ -156,9 +163,13 @@ logic  [STATE_W-1:0]     target_state_q;
 logic  [STATE_W-1:0]     delay_state_q;
 
 // Address bits
-logic [SDRAM_ROW_W-1:0]  addr_col_w  = {{(SDRAM_ROW_W-SDRAM_COL_W){1'b0}}, ram_addr_w[SDRAM_COL_W:2], 1'b0};
-logic [SDRAM_ROW_W-1:0]  addr_row_w  = ram_addr_w[SDRAM_ADDR_W:SDRAM_COL_W+2+1];
-logic [SDRAM_BANK_W-1:0] addr_bank_w = ram_addr_w[SDRAM_COL_W+2:SDRAM_COL_W+2-1];
+logic [SDRAM_ROW_W-1:0]  addr_col_w;
+logic [SDRAM_ROW_W-1:0]  addr_row_w;
+logic [SDRAM_BANK_W-1:0] addr_bank_w;
+
+assign addr_col_w  = {{(SDRAM_ROW_W-SDRAM_COL_W){1'b0}}, ram_addr_w[SDRAM_COL_W:2], 1'b0};
+assign addr_row_w  = ram_addr_w[SDRAM_ADDR_W:SDRAM_COL_W+2+1];
+assign addr_bank_w = ram_addr_w[SDRAM_COL_W+2:SDRAM_COL_W+2-1];
 
 //-----------------------------------------------------------------
 // SDRAM State Machine
