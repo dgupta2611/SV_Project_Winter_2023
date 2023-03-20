@@ -28,4 +28,13 @@ package definitions;
 	parameter SDRAM_START_DELAY      = 100000 / (1000 / SDRAM_MHZ); // 100uS
 	parameter SDRAM_REFRESH_CYCLES   = ((64000*SDRAM_MHZ) / (2 ** SDRAM_ROW_W))-1;
 
+	class data_rand #(parameter DAT_WID = 16);
+		
+		randc bit [DAT_WID-1:0] data;
+
+		constraint dat_contr_upper_half { data[DAT_WID-1:DAT_WID/2] > 0; data[DAT_WID-1:DAT_WID/2] < 16; }
+		constraint dat_contr_lower_half { data[DAT_WID/2-1:0] > 0; data[DAT_WID/2-1:0] < 16; }	
+		
+	endclass 
+
 endpackage
