@@ -39,10 +39,10 @@ module sdram_axi_core
     input           rst_i,
     input  [  3:0]  inport_wr_i,
     input           inport_rd_i,
-    input  [  7:0]  inport_len_i,
+    // input  [  7:0]  inport_len_i,
     input  [ 31:0]  inport_addr_i,
     input  [ 31:0]  inport_write_data_i,
-    input  [ 15:0]  sdram_data_input_i,
+    // input  [ 15:0]  sdram_data_input_i,
 
     // Outputs
     output          inport_accept_o,
@@ -58,8 +58,11 @@ module sdram_axi_core
     output [  1:0]  sdram_dqm_o,
     output [ 12:0]  sdram_addr_o,
     output [  1:0]  sdram_ba_o,
-    output [ 15:0]  sdram_data_output_o,
-    output          sdram_data_out_en_o
+    // output [ 15:0]  sdram_data_output_o,
+    output          sdram_data_out_en_o,
+
+    // Bus
+    inout  [15:0]   sdram_data_bus_io
 );
 
 import definitions::*;
@@ -97,18 +100,18 @@ localparam STATE_REFRESH     = 4'd9;
 //-----------------------------------------------------------------
 // External Interface
 //-----------------------------------------------------------------
-wire [ 31:0]  ram_addr_w       = inport_addr_i;
-wire [  3:0]  ram_wr_w         = inport_wr_i;
-wire          ram_rd_w         = inport_rd_i;
-wire          ram_accept_w;
-wire [ 31:0]  ram_write_data_w = inport_write_data_i;
-wire [ 31:0]  ram_read_data_w;
-wire          ram_ack_w;
+logic [ 31:0]  ram_addr_w       = inport_addr_i;
+logic [  3:0]  ram_wr_w         = inport_wr_i;
+logic          ram_rd_w         = inport_rd_i;
+logic          ram_accept_w;
+logic [ 31:0]  ram_write_data_w = inport_write_data_i;
+logic [ 31:0]  ram_read_data_w;
+logic          ram_ack_w;
 
-wire          ram_req_w = (ram_wr_w != 4'b0) | ram_rd_w;
+logic          ram_req_w = (ram_wr_w != 4'b0) | ram_rd_w;
 
 assign inport_ack_o       = ram_ack_w;
-assign inport_read_data_o = ram_read_data_w;
+assign inport_read_data_o = ram_ack_w ? ram_read_data_w : 'd0;
 assign inport_error_o     = 1'b0;
 assign inport_accept_o    = ram_accept_w;
 
@@ -124,45 +127,48 @@ assign inport_accept_o    = ram_accept_w;
 //synthesis attribute IOB of bank_q is "TRUE"
 //synthesis attribute IOB of data_q is "TRUE"
 
-reg [CMD_W-1:0]        command_q;
-reg [SDRAM_ROW_W-1:0]  addr_q;
-reg [SDRAM_DATA_W-1:0] data_q;
-reg                    data_rd_en_q;
-reg [SDRAM_DQM_W-1:0]  dqm_q;
-reg                    cke_q;
-reg [SDRAM_BANK_W-1:0] bank_q;
+logic [CMD_W-1:0]        command_q;
+logic [SDRAM_ROW_W-1:0]  addr_q;
+logic [SDRAM_DATA_W-1:0] data_q;
+logic                    data_rd_en_q;
+logic [SDRAM_DQM_W-1:0]  dqm_q;
+logic                    cke_q;
+logic [SDRAM_BANK_W-1:0] bank_q;
 
 // Buffer half word during read and write commands
-reg [SDRAM_DATA_W-1:0] data_buffer_q;
-reg [SDRAM_DQM_W-1:0]  dqm_buffer_q;
+// reg [SDRAM_DATA_W-1:0] data_buffer_q;
+logic [SDRAM_DATA_W-1:0] wr_data_buffer_q;
+logic [SDRAM_DATA_W-1:0] rd_B0_data_buffer_q;
+logic [SDRAM_DATA_W-1:0] rd_B1_data_buffer_q;
+logic [SDRAM_DQM_W-1:0]  dqm_buffer_q;
 
-wire [SDRAM_DATA_W-1:0] sdram_data_in_w;
+logic [SDRAM_DATA_W-1:0] sdram_data_in_w;
 
-reg                    refresh_q;
+logic                    refresh_q;
 
-reg [SDRAM_BANKS-1:0]  row_open_q;
-reg [SDRAM_ROW_W-1:0]  active_row_q[0:SDRAM_BANKS-1];
+logic [SDRAM_BANKS-1:0]  row_open_q;
+logic [SDRAM_ROW_W-1:0]  active_row_q[0:SDRAM_BANKS-1];
 
-reg  [STATE_W-1:0]     state_q;
-reg  [STATE_W-1:0]     next_state_r;
-reg  [STATE_W-1:0]     target_state_r;
-reg  [STATE_W-1:0]     target_state_q;
-reg  [STATE_W-1:0]     delay_state_q;
+logic  [STATE_W-1:0]     state_q;
+logic  [STATE_W-1:0]     next_state_r;
+logic  [STATE_W-1:0]     target_state_r;
+logic  [STATE_W-1:0]     target_state_q;
+logic  [STATE_W-1:0]     delay_state_q;
 
 // Address bits
-wire [SDRAM_ROW_W-1:0]  addr_col_w  = {{(SDRAM_ROW_W-SDRAM_COL_W){1'b0}}, ram_addr_w[SDRAM_COL_W:2], 1'b0};
-wire [SDRAM_ROW_W-1:0]  addr_row_w  = ram_addr_w[SDRAM_ADDR_W:SDRAM_COL_W+2+1];
-wire [SDRAM_BANK_W-1:0] addr_bank_w = ram_addr_w[SDRAM_COL_W+2:SDRAM_COL_W+2-1];
+logic [SDRAM_ROW_W-1:0]  addr_col_w  = {{(SDRAM_ROW_W-SDRAM_COL_W){1'b0}}, ram_addr_w[SDRAM_COL_W:2], 1'b0};
+logic [SDRAM_ROW_W-1:0]  addr_row_w  = ram_addr_w[SDRAM_ADDR_W:SDRAM_COL_W+2+1];
+logic [SDRAM_BANK_W-1:0] addr_bank_w = ram_addr_w[SDRAM_COL_W+2:SDRAM_COL_W+2-1];
 
 //-----------------------------------------------------------------
 // SDRAM State Machine
 //-----------------------------------------------------------------
-always @ *
+always_comb 
 begin
     next_state_r   = state_q;
     target_state_r = target_state_q;
 
-    case (state_q)
+    unique case (state_q)
     //-----------------------------------------
     // STATE_INIT
     //-----------------------------------------
@@ -300,8 +306,7 @@ begin
     begin
         next_state_r = delay_state_q;
     end
-    default:
-        ;
+    
    endcase
 end
 
@@ -310,12 +315,12 @@ end
 //-----------------------------------------------------------------
 localparam DELAY_W = 4;
 
-reg [DELAY_W-1:0] delay_q;
-reg [DELAY_W-1:0] delay_r;
+logic [DELAY_W-1:0] delay_q;
+logic [DELAY_W-1:0] delay_r;
 
 /* verilator lint_off WIDTH */
 
-always @ *
+always_comb
 begin
     case (state_q)
     //-----------------------------------------
@@ -412,7 +417,7 @@ else
 //-----------------------------------------------------------------
 localparam REFRESH_CNT_W = 17;
 
-reg [REFRESH_CNT_W-1:0] refresh_timer_q;
+logic [REFRESH_CNT_W-1:0] refresh_timer_q;
 always @ (posedge clk_i or posedge rst_i)
 if (rst_i)
     refresh_timer_q <= SDRAM_START_DELAY + 100;
@@ -433,43 +438,105 @@ else if (state_q == STATE_REFRESH)
 // Input sampling
 //-----------------------------------------------------------------
 
-reg [SDRAM_DATA_W-1:0] sample_data0_q;
-always @ (posedge clk_i or posedge rst_i)
-if (rst_i)
-    sample_data0_q <= {SDRAM_DATA_W{1'b0}};
-else
-    sample_data0_q <= sdram_data_in_w;
+// reg [SDRAM_DATA_W-1:0] sample_data0_q;
+// always @ (posedge clk_i or posedge rst_i)
+// if (rst_i)
+//     sample_data0_q <= {SDRAM_DATA_W{1'b0}};
+// else
+//     sample_data0_q <= sdram_data_in_w;
+// 
+// reg [SDRAM_DATA_W-1:0] sample_data_q;
+// always @ (posedge clk_i or posedge rst_i)
+// if (rst_i)
+//     sample_data_q <= {SDRAM_DATA_W{1'b0}};
+// else
+//     sample_data_q <= sample_data0_q;
 
-reg [SDRAM_DATA_W-1:0] sample_data_q;
-always @ (posedge clk_i or posedge rst_i)
-if (rst_i)
-    sample_data_q <= {SDRAM_DATA_W{1'b0}};
-else
-    sample_data_q <= sample_data0_q;
+// reg [SDRAM_DATA_W-1:0] sample_data_q;
+// always @ (posedge clk_i or posedge rst_i)
+// if (rst_i)
+//     sample_data_q <= {SDRAM_DATA_W{1'b0}};
+// else
+//     sample_data_q <= sdram_data_in_w;
+
+// logic [SDRAM_DATA_W-1:0] sample_data_q;
+// assign sample_data_q = sdram_data_in_w;
 
 //-----------------------------------------------------------------
 // Command Output
 //-----------------------------------------------------------------
+
 integer idx;
 
-always @ (posedge clk_i or posedge rst_i)
+always_ff @(posedge clk_i) begin
 if (rst_i)
 begin
-    command_q       <= CMD_NOP;
-    data_q          <= 16'b0;
-    addr_q          <= {SDRAM_ROW_W{1'b0}};
-    bank_q          <= {SDRAM_BANK_W{1'b0}};
-    cke_q           <= 1'b0; 
-    dqm_q           <= {SDRAM_DQM_W{1'b0}};
-    data_rd_en_q    <= 1'b1;
-    dqm_buffer_q    <= {SDRAM_DQM_W{1'b0}};
+    dqm_buffer_q     <= {SDRAM_DQM_W{1'b0}};
+    wr_data_buffer_q <= 16'd0;
 
     for (idx=0;idx<SDRAM_BANKS;idx=idx+1)
         active_row_q[idx] <= {SDRAM_ROW_W{1'b0}};
 
     row_open_q      <= {SDRAM_BANKS{1'b0}};
 end
-else
+else 
+begin
+    dqm_buffer_q     <= ~ram_wr_w[3:2];
+    wr_data_buffer_q <=  ram_write_data_w[31:16];
+
+    if (state_q == STATE_ACTIVATE) begin
+        active_row_q[addr_bank_w]  <= addr_row_w;
+        row_open_q[addr_bank_w]    <= 1'b1;
+    end
+
+    if (state_q == STATE_PRECHARGE) begin
+        // Precharge due to refresh, close all banks
+        if (target_state_r == STATE_REFRESH)
+            row_open_q          <= {SDRAM_BANKS{1'b0}};
+        // Precharge specific banks
+        else
+            row_open_q[addr_bank_w] <= 1'b0;
+    end
+
+end
+end
+
+logic INIT_refresh_timer_eq_50;
+logic INIT_refresh_timer_eq_40;
+logic INIT_refresh_timer_eq_30;
+logic INIT_refresh_timer_eq_20;
+logic INIT_refresh_timer_eq_10;
+
+assign INIT_refresh_timer_eq_50 = (state_q == STATE_INIT) && (refresh_timer_q == 50); 
+assign INIT_refresh_timer_eq_40 = (state_q == STATE_INIT) && (refresh_timer_q == 40);
+assign INIT_refresh_timer_eq_30 = (state_q == STATE_INIT) && (refresh_timer_q == 30);
+assign INIT_refresh_timer_eq_20 = (state_q == STATE_INIT) && (refresh_timer_q == 20);
+assign INIT_refresh_timer_eq_10 = (state_q == STATE_INIT) && (refresh_timer_q == 10);
+
+//always @ (posedge clk_i or posedge rst_i)
+always @ (state_q                  or 
+          INIT_refresh_timer_eq_50 or 
+          INIT_refresh_timer_eq_40 or 
+          INIT_refresh_timer_eq_30 or 
+          INIT_refresh_timer_eq_20 or 
+          INIT_refresh_timer_eq_10   )
+// if (rst_i)
+// begin
+//     command_q       <= CMD_NOP;
+//     data_q          <= 16'b0;
+//     addr_q          <= {SDRAM_ROW_W{1'b0}};
+//     bank_q          <= {SDRAM_BANK_W{1'b0}};
+//     cke_q           <= 1'b0; 
+//     dqm_q           <= {SDRAM_DQM_W{1'b0}};
+//     data_rd_en_q    <= 1'b1;
+//     dqm_buffer_q    <= {SDRAM_DQM_W{1'b0}};
+// 
+//     for (idx=0;idx<SDRAM_BANKS;idx=idx+1)
+//         active_row_q[idx] <= {SDRAM_ROW_W{1'b0}};
+// 
+//     row_open_q      <= {SDRAM_BANKS{1'b0}};
+// end
+// else
 begin
     case (state_q)
     //-----------------------------------------
@@ -482,6 +549,7 @@ begin
         addr_q       <= {SDRAM_ROW_W{1'b0}};
         bank_q       <= {SDRAM_BANK_W{1'b0}};
         data_rd_en_q <= 1'b1;
+        dqm_q        <= 2'd0;
     end
     //-----------------------------------------
     // STATE_INIT
@@ -530,8 +598,8 @@ begin
         addr_q        <= addr_row_w;
         bank_q        <= addr_bank_w;
 
-        active_row_q[addr_bank_w]  <= addr_row_w;
-        row_open_q[addr_bank_w]    <= 1'b1;
+        // active_row_q[addr_bank_w]  <= addr_row_w;
+        // row_open_q[addr_bank_w]    <= 1'b1;
     end
     //-----------------------------------------
     // STATE_PRECHARGE
@@ -544,7 +612,7 @@ begin
             // Precharge all banks
             command_q           <= CMD_PRECHARGE;
             addr_q[ALL_BANKS_BIT]   <= 1'b1;
-            row_open_q          <= {SDRAM_BANKS{1'b0}};
+            // row_open_q          <= {SDRAM_BANKS{1'b0}};
         end
         else
         begin
@@ -553,7 +621,7 @@ begin
             addr_q[ALL_BANKS_BIT]   <= 1'b0;
             bank_q              <= addr_bank_w;
 
-            row_open_q[addr_bank_w] <= 1'b0;
+            // row_open_q[addr_bank_w] <= 1'b0;
         end
     end
     //-----------------------------------------
@@ -596,7 +664,7 @@ begin
 
         // Write mask
         dqm_q           <= ~ram_wr_w[1:0];
-        dqm_buffer_q    <= ~ram_wr_w[3:2];
+        // dqm_buffer_q    <= ~ram_wr_w[3:2];
 
         data_rd_en_q    <= 1'b0;
     end
@@ -608,7 +676,8 @@ begin
         // Burst continuation
         command_q   <= CMD_NOP;
 
-        data_q      <= data_buffer_q;
+        // data_q      <= data_buffer_q;
+        data_q      <= wr_data_buffer_q;
 
         // Disable auto precharge (auto close of row)
         addr_q[AUTO_PRECHARGE_BIT]  <= 1'b0;
@@ -622,48 +691,62 @@ end
 //-----------------------------------------------------------------
 // Record read events
 //-----------------------------------------------------------------
-reg [SDRAM_READ_LATENCY+1:0]  rd_q;
+logic [SDRAM_READ_LATENCY+1:0]  rd_q;
 
 always @ (posedge clk_i or posedge rst_i)
 if (rst_i)
-    rd_q    <= {(SDRAM_READ_LATENCY+2){1'b0}};
+    rd_q    <= {(SDRAM_READ_LATENCY+1){1'b0}};
 else
-    rd_q    <= {rd_q[SDRAM_READ_LATENCY:0], (state_q == STATE_READ)};
+    rd_q    <= {rd_q[SDRAM_READ_LATENCY-1:0], (state_q == STATE_READ)};
 
 //-----------------------------------------------------------------
 // Data Buffer
 //-----------------------------------------------------------------
 
-// Buffer upper 16-bits of write data so write command can be accepted
-// in WRITE0. Also buffer lower 16-bits of read data.
-always @ (posedge clk_i or posedge rst_i)
-if (rst_i)
-    data_buffer_q <= 16'b0;
-else if (state_q == STATE_WRITE0)
-    data_buffer_q <= ram_write_data_w[31:16];
-else if (rd_q[SDRAM_READ_LATENCY+1])
-    data_buffer_q <= sample_data_q;
+// // Buffer upper 16-bits of write data so write command can be accepted
+// // in WRITE0. Also buffer lower 16-bits of read data.
+// always @ (posedge clk_i or posedge rst_i)
+// if (rst_i)
+//     data_buffer_q <= 16'b0;
+// else if (state_q == STATE_WRITE0)
+//     data_buffer_q <= ram_write_data_w[31:16];
+// else if (rd_q[SDRAM_READ_LATENCY])
+//     data_buffer_q <= sample_data_q;
+
+always_ff @(posedge clk_i or posedge rst_i)
+if (rst_i) 
+begin
+    rd_B0_data_buffer_q <= 16'd0;
+    rd_B1_data_buffer_q <= 16'd0;
+end
+else if (rd_q[SDRAM_READ_LATENCY-2])
+    rd_B0_data_buffer_q <= sdram_data_in_w;
+else if (rd_q[SDRAM_READ_LATENCY-1])
+    rd_B1_data_buffer_q <= sdram_data_in_w;
 
 // Read data output
-assign ram_read_data_w = {sample_data_q, data_buffer_q};
+//assign ram_read_data_w = {sample_data_q, data_buffer_q};
+assign ram_read_data_w = {rd_B1_data_buffer_q, rd_B0_data_buffer_q};
 
 //-----------------------------------------------------------------
 // ACK
 //-----------------------------------------------------------------
-reg ack_q;
+logic ack_q;
 
-always @ (posedge clk_i or posedge rst_i)
-if (rst_i)
-    ack_q   <= 1'b0;
-else
-begin
-    if (state_q == STATE_WRITE1)
-        ack_q <= 1'b1;
-    else if (rd_q[SDRAM_READ_LATENCY+1])
-        ack_q <= 1'b1;
-    else
-        ack_q <= 1'b0;
-end
+// always @ (posedge clk_i or posedge rst_i)
+// if (rst_i)
+//     ack_q   <= 1'b0;
+// else
+// begin
+//     if (state_q == STATE_WRITE1)
+//         ack_q <= 1'b1;
+//     else if (rd_q[SDRAM_READ_LATENCY])
+//         ack_q <= 1'b1;
+//     else
+//         ack_q <= 1'b0;
+// end
+
+assign ack_q = (state_q == STATE_WRITE1) || (rd_q[SDRAM_READ_LATENCY]);
 
 assign ram_ack_w = ack_q;
 
@@ -675,8 +758,10 @@ assign ram_accept_w = (state_q == STATE_READ || state_q == STATE_WRITE0);
 //-----------------------------------------------------------------
 assign sdram_clk_o           = ~clk_i;
 assign sdram_data_out_en_o   = ~data_rd_en_q;
-assign sdram_data_output_o   =  data_q;
-assign sdram_data_in_w       = sdram_data_input_i;
+// assign sdram_data_output_o   =  data_q;
+assign sdram_data_bus_io     = ~data_rd_en_q ? data_q : 'bz;
+// assign sdram_data_in_w       = sdram_data_input_i;
+assign sdram_data_in_w       = sdram_data_bus_io;
 
 assign sdram_cke_o  = cke_q;
 assign sdram_cs_o   = command_q[3];
@@ -691,9 +776,9 @@ assign sdram_addr_o = addr_q;
 // Simulation only
 //-----------------------------------------------------------------
 `ifdef verilator
-reg [79:0] dbg_state;
+logic [79:0] dbg_state;
 
-always @ *
+always_comb
 begin
     case (state_q)
     STATE_INIT        : dbg_state = "INIT";
