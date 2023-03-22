@@ -55,7 +55,6 @@ mt48lc16m16a2  MEM_mt48lc16m16a2    (.Dq     (sdram_data_bus_io),
 ////////////////////////////// Declarations ///////////////////////////////////
 genvar i;
 ref_mem memModel;
-logic [31:0] fullAddr;
 
 logic intf2cont_datSample;
 
@@ -79,22 +78,24 @@ end
 
 /////////////////////////// Read/Write Tasks////////////////////////////////////////////////////
 
-task automatic WriteMem(input [3:0] wr_mask, input [31:0] wr_addr, const ref ref_mem memModel);
+task automatic WriteMem(input [3:0] mask, input [31:0] wr_addr, const ref ref_mem memModel);
 
     logic [35:0] wd;
 
-    assert(|wr_mask) else begin
+    assert(|mask) else begin
         $warning("%t Using WriteMem task with a write mask = 'd0", $time);
+        return; 
     end
 
-    inport_wr_i   = wr_mask;
+    inport_wr_i   = mask;
     inport_addr_i = wr_addr;
     intf2cont_datSample = 1;
 
     @(posedge clk_i) begin
         intf2cont_datSample = 0;  // At the edge, sample random inport_write_data_i data and then retain
-        
-        memModel.write(wr_addr[24:2], rand_data_intf2cont, wr_mask);
+
+        // Updating the associative array with the data        
+        memModel.write(wr_addr[24:2], rand_data_intf2cont, mask);
 
         // Making sure the reference memory got updated
         wd = memModel.read(wr_addr[24:2]);
@@ -121,30 +122,31 @@ task automatic ReadMem(input [31:0] rd_addr, const ref ref_mem memModel);
 
     refMemReadSuccess = memModel.M.exists(rd_addr[24:2]);
 
-    if (~refMemReadSuccess) 
+    assert(refMemReadSuccess) else 
         $warning("Trying to access unwritten Memory location");
 
     if(refMemReadSuccess) 
         {refMemReadMask, refMemReadData} = memModel.read(rd_addr[24:2]);
 
-    wait(~inport_accept_o);
-
     inport_rd_i   = 0;
+
+    wait(~inport_accept_o);
     
 endtask
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 ///////////////////// Assertions to check RD data against Ref Mem Data ///////////////////////////////
-always_ff @(posedge clk_i) begin
-    if(inport_ack_o && ~sdram_data_out_en_o) begin
-        $display("Memory Model Read for Address = %h Word 1 = %h Word 0 = %h Mask = %h \n", 
-                  $past(inport_addr_i,         SDRAM_READ_LATENCY), 
-                  $past(refMemReadData[31:16], SDRAM_READ_LATENCY), 
-                  $past(refMemReadData[15:0],  SDRAM_READ_LATENCY), 
-                  $past(refMemReadMask,        SDRAM_READ_LATENCY));
-    end
-end
+
+// always_ff @(posedge clk_i) begin
+//     if(inport_ack_o && ~sdram_data_out_en_o) begin
+//         $display("Memory Model Read for Address = %h Word 1 = %h Word 0 = %h Mask = %h \n", 
+//                   $past(inport_addr_i,         SDRAM_READ_LATENCY), 
+//                   $past(refMemReadData[31:16], SDRAM_READ_LATENCY), 
+//                   $past(refMemReadData[15:0],  SDRAM_READ_LATENCY), 
+//                   $past(refMemReadMask,        SDRAM_READ_LATENCY));
+//     end
+// end
 
 for (i = 0; i < 4; i++) begin
     
@@ -166,12 +168,31 @@ end
 ////////////////////////// Main Simulation Block //////////////////////////////
 initial begin
 
-    intf2cont_datSample = 1;
+    int numOps_WrHeavy = 550;
+    int numOps_Random  = 450;
+
+    logic [31:0] fullAddr;
+    logic [3:0]  mask;
+
+    int write;
+    int delay;
+
+    addr_rand #(32) randAddr;
+    wrBytes         randMask;
+    ops_rand  #(80) wr80Percent;
+    ops_rand  #(50) wr50Percent;
+    delay_rand      randDelay;
 
     // sdram2cont_data = new();
     intf2cont_data  = new();
-
     memModel        = new();
+    randAddr        = new();
+    wr80Percent     = new();
+    wr50Percent     = new();
+    randMask        = new();
+    randDelay       = new();
+
+    intf2cont_datSample = 1;
 
     rst_i = 1; 
     repeat(2) @(posedge clk_i); 
@@ -189,7 +210,50 @@ initial begin
     fullAddr = 32'd4; ReadMem(fullAddr, memModel);
     fullAddr = 32'd8; ReadMem(fullAddr, memModel);
 
-    // ReadMem(32'd12);
+
+    while(numOps_WrHeavy) begin
+        assert(randAddr.randomize())    else $error("Addr randomization failed");
+        assert(randMask.randomize())    else $error("Mask randomization failed");
+        assert(wr80Percent.randomize()) else $error("wr80 randomization failed");
+
+        fullAddr = randAddr.addr;
+        mask     = randMask.mask;
+        write    = wr80Percent.issueWr;
+        delay    = randDelay.delay;
+
+        if(write) begin
+            WriteMem(mask, fullAddr, memModel);
+        end
+        else begin
+            ReadMem(fullAddr, memModel);    
+        end
+
+         #(delay);
+
+        numOps_WrHeavy -= 1;
+    end
+
+    while(numOps_Random) begin
+        assert(randAddr.randomize())    else $error("Addr randomization failed");
+        assert(randMask.randomize())    else $error("Mask randomization failed");
+        assert(wr50Percent.randomize()) else $error("wr50 randomization failed");
+
+        fullAddr = randAddr.addr;
+        mask     = randMask.mask;
+        write    = wr50Percent.issueWr;
+        delay    = randDelay.delay;
+
+        if(write) begin
+            WriteMem(mask, fullAddr, memModel);
+        end
+        else begin
+            ReadMem(fullAddr, memModel);    
+        end
+
+         #(delay);
+
+        numOps_Random -= 1;
+    end
 
     repeat(10) @(posedge clk_i);
 
