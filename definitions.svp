@@ -37,4 +37,16 @@ package definitions;
 		
 	endclass 
 
+	class ref_mem;
+		logic [31:0] M [logic [22:0]];
+
+		function void write(logic [22:0] addr, logic [31:0] data);
+			M[addr] = data;
+		endfunction
+
+		function logic [31:0] read(logic [22:0] addr);
+			read = M[addr];
+		endfunction
+
+	endclass 
 endpackage

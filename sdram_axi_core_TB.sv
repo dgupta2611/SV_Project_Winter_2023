@@ -36,8 +36,6 @@ logic          sdram_data_out_en_o;
 // Bus
 wire  [15:0]   sdram_data_bus_io;
 
-wire [ 15:0] Dq;
-
 sdram_axi_core sdram_axi_controller (.*);
 mt48lc16m16a2  MEM_mt48lc16m16a2    (.Dq     (sdram_data_bus_io), 
                                      .Addr   (sdram_addr_o), 
@@ -50,43 +48,73 @@ mt48lc16m16a2  MEM_mt48lc16m16a2    (.Dq     (sdram_data_bus_io),
                                      .We_n   (sdram_we_o), 
                                      .Dqm    (sdram_dqm_o));
 
-data_rand #(16) sdram2cont_data;
-data_rand #(32) intf2cont_data;
+logic intf2cont_datSample;
 
-task WriteMem(input [3:0] wr_mask, input [31:0] wr_addr);
-    // @(posedge clk_i) begin
-        inport_wr_i   = wr_mask;
-        inport_addr_i = wr_addr;
-    // end
+// data_rand #(16) sdram2cont_data;
+data_rand #(32) intf2cont_data;
+logic [31:0] rand_data_intf2cont;
+
+task automatic WriteMem(input [3:0] wr_mask, input [31:0] wr_addr, const ref ref_mem memModel);
+
+    logic [31:0] wd;
+
+    assert(|wr_mask) else begin
+        $warning("%t Using WriteMem task with a write mask = 'd0", $time);
+    end
+
+    inport_wr_i   = wr_mask;
+    inport_addr_i = wr_addr;
+    intf2cont_datSample = 1;
+
+    @(posedge clk_i) begin
+        intf2cont_datSample = 0;  // At the edge, sample random inport_write_data_i data and then retain
+        
+        memModel.write(wr_addr[24:2], rand_data_intf2cont);
+
+        // Making sure the reference memory got updated
+        wd = memModel.read(wr_addr[24:2]);
+        $display("Memory Model written for Address = %h Byte 1 = %h Byte 0 = %h", wr_addr, wd[31:16], wd[15:0]);
+    end
+
     wait(inport_accept_o);
     wait(~inport_accept_o);
+
     inport_wr_i = '0;
     
 endtask
 
 task ReadMem(input [31:0] rd_addr);
-    // @(posedge clk_i) begin
-        inport_rd_i   = 1;
-        inport_addr_i = rd_addr;
-    // end
 
-    // @(posedge clk_i) inport_rd_i   = 0;
+    inport_rd_i   = 1;
+    inport_addr_i = rd_addr;
 
     wait(inport_accept_o);
     wait(~inport_accept_o);
+
     inport_rd_i   = 0;
     
 endtask
 
+// Setting up the clock
 initial  begin
     clk_i = 0;
     forever #(CYCLE_TIME_NS/2) clk_i = ~clk_i;
 end
 
+ref_mem memModel;
+
+logic [31:0] fullAddr;
+
+// Main Simulation Block 
+
 initial begin
 
-    sdram2cont_data = new();
+    intf2cont_datSample = 1;
+
+    // sdram2cont_data = new();
     intf2cont_data  = new();
+
+    memModel        = new();
 
     rst_i = 1; 
     repeat(2) @(posedge clk_i); 
@@ -95,13 +123,16 @@ initial begin
     #((SDRAM_START_DELAY+200)*CYCLE_TIME_NS);
     $display("SDRAM Ready");
 
-    WriteMem(4'hf, '0);
-    WriteMem(4'hf, 32'd4);
-    WriteMem(4'hf, 32'd8);
+    fullAddr = '0;    WriteMem(4'hf, fullAddr, memModel); 
+    fullAddr = 32'd4; WriteMem(4'hf, fullAddr, memModel);
+    fullAddr = 32'd8; WriteMem(4'hf, fullAddr, memModel);
+    
     // `DELAY(5);
-    ReadMem('0);
-    ReadMem(32'd4);
-    ReadMem(32'd8);
+    fullAddr = '0   ; ReadMem(fullAddr);
+    fullAddr = 32'd4; ReadMem(fullAddr);
+    fullAddr = 32'd8; ReadMem(fullAddr);
+
+    // ReadMem(32'd12);
 
     repeat(10) @(posedge clk_i);
 
@@ -111,16 +142,19 @@ end
 
 // Driving the BUS
 
-logic [15:0] rand_data_sdram2cont;
+// logic [15:0] rand_data_sdram2cont;
 
 always @(posedge clk_i) begin
 
-    assert (sdram2cont_data.randomize());
+    // assert (sdram2cont_data.randomize());
     assert (intf2cont_data.randomize());
 
     // sdram_data_input_i = sdram2cont_data.data;
-    rand_data_sdram2cont = sdram2cont_data.data;
-    inport_write_data_i  = intf2cont_data.data;
+    // rand_data_sdram2cont = sdram2cont_data.data;
+
+    // Implicit type cast from class definitions::data_rand to logic [31:0]
+    rand_data_intf2cont  = intf2cont_datSample ? intf2cont_data.data : rand_data_intf2cont;
+    inport_write_data_i  = rand_data_intf2cont;
 end
 
 // assign sdram_data_bus_io   = ~sdram_data_out_en_o ? rand_data_sdram2cont : 'bz;

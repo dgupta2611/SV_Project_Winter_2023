@@ -81,7 +81,7 @@ localparam CMD_PRECHARGE     = 4'b0010;
 localparam CMD_REFRESH       = 4'b0001;
 localparam CMD_LOAD_MODE     = 4'b0000;
 
-// Mode: Burst Length = 4 bytes, CAS=2
+// Mode: Burst Length = 4 bytes (2x16), CAS=2
 localparam MODE_REG          = {3'b000,1'b0,2'b00,3'b010,1'b0,3'b001};
 
 // SM states
@@ -167,9 +167,9 @@ logic [SDRAM_ROW_W-1:0]  addr_col_w;
 logic [SDRAM_ROW_W-1:0]  addr_row_w;
 logic [SDRAM_BANK_W-1:0] addr_bank_w;
 
-assign addr_col_w  = {{(SDRAM_ROW_W-SDRAM_COL_W){1'b0}}, ram_addr_w[SDRAM_COL_W:2], 1'b0};
-assign addr_row_w  = ram_addr_w[SDRAM_ADDR_W:SDRAM_COL_W+2+1];
-assign addr_bank_w = ram_addr_w[SDRAM_COL_W+2:SDRAM_COL_W+2-1];
+assign addr_col_w  = {{(SDRAM_ROW_W-SDRAM_COL_W){1'b0}}, ram_addr_w[SDRAM_COL_W:2], 1'b0}; 
+assign addr_row_w  = ram_addr_w[SDRAM_ADDR_W:SDRAM_COL_W+2+1];  // 24:12 
+assign addr_bank_w = ram_addr_w[SDRAM_COL_W+2:SDRAM_COL_W+2-1]; // 11:10
 
 //-----------------------------------------------------------------
 // SDRAM State Machine
@@ -577,7 +577,7 @@ begin
         else if (refresh_timer_q == 40)
         begin
             // Precharge all banks
-            command_q           <= CMD_PRECHARGE;
+            command_q               <= CMD_PRECHARGE;
             addr_q[ALL_BANKS_BIT]   <= 1'b1;
         end
         // 2 x REFRESH (with at least tREF wait)
