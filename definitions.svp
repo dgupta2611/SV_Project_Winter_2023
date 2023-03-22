@@ -13,7 +13,7 @@ package definitions;
 	parameter SDRAM_DATA_W           = 16;
  	parameter SDRAM_BANK_W           = 2;
  	parameter SDRAM_COL_W            = 9;
- 	parameter SDRAM_ROW_W            = SDRAM_ADDR_W - SDRAM_COL_W - SDRAM_BANK_W;
+ 	parameter SDRAM_ROW_W            = SDRAM_ADDR_W - SDRAM_COL_W - SDRAM_BANK_W; // 15
  	parameter SDRAM_DQM_W            = 2;
  	
 	parameter SDRAM_BANKS            = 2 ** SDRAM_BANK_W;	
@@ -25,7 +25,7 @@ package definitions;
 	parameter SDRAM_TRCD_CYCLES 	 = (20 + (CYCLE_TIME_NS-1)) / CYCLE_TIME_NS;
 	parameter SDRAM_TRP_CYCLES  	 = (20 + (CYCLE_TIME_NS-1)) / CYCLE_TIME_NS;
 	parameter SDRAM_TRFC_CYCLES 	 = (60 + (CYCLE_TIME_NS-1)) / CYCLE_TIME_NS;
-	parameter SDRAM_START_DELAY      = 100000 / (1000 / SDRAM_MHZ); // 100uS
+	parameter SDRAM_START_DELAY      = 100000 / (1000 / SDRAM_MHZ);                // 5000 := 100uS
 	parameter SDRAM_REFRESH_CYCLES   = ((64000*SDRAM_MHZ) / (2 ** SDRAM_ROW_W))-1;
 
 	class data_rand #(parameter DAT_WID = 16);
@@ -38,14 +38,16 @@ package definitions;
 	endclass 
 
 	class ref_mem;
-		logic [31:0] M [logic [22:0]];
+		logic [31:0] M     [logic [22:0]];
+		logic [3:0]  Mask  [logic [22:0]];
 
-		function void write(logic [22:0] addr, logic [31:0] data);
-			M[addr] = data;
+		function void write(logic [22:0] addr, logic [31:0] data, logic [3:0] wrMask);
+			M[addr]    = data;
+			Mask[addr] = wrMask;
 		endfunction
 
-		function logic [31:0] read(logic [22:0] addr);
-			read = M[addr];
+		function logic [35:0] read(logic [22:0] addr);
+			read = {Mask[addr], M[addr]};
 		endfunction
 
 	endclass 
