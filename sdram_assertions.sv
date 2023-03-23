@@ -267,7 +267,21 @@ import definitions::*;
       end
    end
  
+property Check_Delays_p(STATE_VALUE,DELAY);
+int temp; 
+@(posedge clk_i)
+disable iff(rst_i)
+ (!$stable(state_q)&&state_q==STATE_VALUE,temp=DELAY) 
+ |->(state_q==STATE_VALUE,temp--) [*0:$] ##0 first_match(temp==0 && !$stable(state_q)) 
+endproperty
+
+
+TRCD_DELAY_a: assert property(Check_Delays_p(STATE_ACTIVATE,SDRAM_TRCD_CYCLES))
+ else $error("Did not wait TRCD cycles during Activate state ");
+
+TRP_DELAY_a: assert property(Check_Delays_p(STATE_PRECHARGE,SDRAM_TRP_CYCLES))
+ else $error("Did not wait TRP cycles during Precharge state ");
  
- 
- 
+
+
 endmodule
