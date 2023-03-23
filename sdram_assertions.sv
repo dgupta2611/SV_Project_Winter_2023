@@ -127,7 +127,7 @@ import definitions::*;
   property cke_q_check_p;
     @(posedge clk_i)
     disable iff(rst_i)
-    refresh_timer_q == 50 && cke_initialization_done==0 |=> $rose(sdram_cke_o) ##0 sdram_cke_o[*0:$] ;
+    refresh_timer_q == 50 && cke_initialization_done==0 |-> $rose(sdram_cke_o) ##0 sdram_cke_o[*0:$] ;
   endproperty
   
   
