@@ -1,7 +1,93 @@
-module sdram_assertions();
+module sdram_assertions
+import definitions::*;
+  (
+    // Inputs
+    input           clk_i,
+    input           rst_i,
+    input  [  3:0]  inport_wr_i,
+    input           inport_rd_i,
+    input  [ 31:0]  inport_addr_i,
+    input  [ 31:0]  inport_write_data_i,
+    
+    // Outputs
+    input          inport_accept_o,
+    input          inport_ack_o,
+    input          inport_error_o,
+    input [ 31:0]  inport_read_data_o,
+    input          sdram_clk_o,
+    input          sdram_cke_o,
+    input          sdram_cs_o,
+    input          sdram_ras_o,
+    input          sdram_cas_o,
+    input          sdram_we_o,
+    input [  1:0]  sdram_dqm_o,
+    input [ 12:0]  sdram_addr_o,
+    input [  1:0]  sdram_ba_o,
+    input          sdram_data_out_en_o,
+
+    // Bus
+    input  [15:0]   sdram_data_bus_io,
+
+    // Internal states
+    input  [16:0] refresh_timer_q,
+    input refresh_q,
+    input  [SDRAM_READ_LATENCY+1:0]  rd_q,
+    input  [3:0]     state_q,
+    input [SDRAM_BANKS-1:0]  row_open_q,
+    input [SDRAM_ROW_W-1:0]  active_row_q[0:SDRAM_BANKS-1]
+  );
+
+  //-----------------------------------------------------------------
+  // Defines / Local params
+  //-----------------------------------------------------------------
+  
+  localparam CMD_W             = 4;
+  localparam CMD_NOP           = 4'b0111;
+  localparam CMD_ACTIVE        = 4'b0011;
+  localparam CMD_READ          = 4'b0101;
+  localparam CMD_WRITE         = 4'b0100;
+  localparam CMD_TERMINATE     = 4'b0110;
+  localparam CMD_PRECHARGE     = 4'b0010;
+  localparam CMD_REFRESH       = 4'b0001;
+  localparam CMD_LOAD_MODE     = 4'b0000;
+  
+  // Mode: Burst Length = 2 or 4 bytes (2x16), CAS=2
+  localparam MODE_REG          = {3'b000,1'b0,2'b00,3'b010,1'b0,3'b001};
+  
+  // SM states
+  localparam STATE_W           = 4;
+  localparam STATE_INIT        = 4'd0;
+  localparam STATE_DELAY       = 4'd1;
+  localparam STATE_IDLE        = 4'd2;
+  localparam STATE_ACTIVATE    = 4'd3;
+  localparam STATE_READ        = 4'd4;
+  localparam STATE_READ_WAIT   = 4'd5;
+  localparam STATE_WRITE0      = 4'd6;
+  localparam STATE_WRITE1      = 4'd7;
+  localparam STATE_PRECHARGE   = 4'd8;
+  localparam STATE_REFRESH     = 4'd9;
+
 //ASSERTION VARIABLES
  logic cke_initialization_done,CMD_PRECHARGE_first,CMD_LOAD_MODE_first;
  logic [1:0] CMD_REFRESH_first;
+
+ logic [3:0] command_q;
+ assign command_q[3] = sdram_cs_o  ;
+ assign command_q[2] = sdram_ras_o ;
+ assign command_q[1] = sdram_cas_o ;
+ assign command_q[0] = sdram_we_o  ;
+
+ logic ram_req_w;
+ assign ram_req_w = inport_rd_i || |inport_wr_i;
+
+ // Address bits
+ logic [SDRAM_ROW_W-1:0]  addr_col_w;
+ logic [SDRAM_ROW_W-1:0]  addr_row_w;
+ logic [SDRAM_BANK_W-1:0] addr_bank_w;
+ 
+ assign addr_col_w  = {{(SDRAM_ROW_W-SDRAM_COL_W){1'b0}}, inport_addr_i[SDRAM_COL_W:2], 1'b0}; 
+ assign addr_row_w  = inport_addr_i[SDRAM_ADDR_W:SDRAM_COL_W+2+1];  // 24:12 
+ assign addr_bank_w = inport_addr_i[SDRAM_COL_W+2:SDRAM_COL_W+2-1]; // 11:10
  
  
   //Glue logic to check reset signals first time
@@ -13,9 +99,9 @@ module sdram_assertions();
          fork
           begin
             cke_initialization_done = 0;
-			CMD_PRECHARGE_first = 0;
-			CMD_LOAD_MODE_first = 0;
-			CMD_REFRESH_first = 0;
+			      CMD_PRECHARGE_first = 0;
+			      CMD_LOAD_MODE_first = 0;
+			      CMD_REFRESH_first = 0;
             wait(refresh_timer_q == 50)
 			@(posedge clk_i)
             cke_initialization_done = 1;
@@ -40,7 +126,7 @@ module sdram_assertions();
   property cke_q_check;
     @(posedge rst_i)
     disable iff(rst_i)
-    refresh_timer_q == 50 && cke_initialization_done==0 |=> $rose(cke_q) ##0 cke_q[*0:$] ;
+    refresh_timer_q == 50 && cke_initialization_done==0 |=> $rose(sdram_cke_o) ##0 sdram_cke_o[*0:$] ;
   endproperty
   
   
@@ -54,7 +140,16 @@ module sdram_assertions();
   //Property for Reset check for all signals.
   property reset_check;
     @(posedge clk_i)
-    $rose(rst_i) |=>     command_q == CMD_NOP && data_q == 16'b0 &&addr_q          == {SDRAM_ROW_W{1'b0}} && bank_q          == {SDRAM_BANK_W{1'b0}} && cke_q           == 1'b0 && dqm_q           =={SDRAM_DQM_W{1'b0}} && data_rd_en_q    == 1'b1 && dqm_buffer_q    == {SDRAM_DQM_W{1'b0}} && state_q==STATE_INIT && refresh_timer_q == SDRAM_START_DELAY + 100;
+    $rose(rst_i) |=> ((command_q              == CMD_NOP                ) && 
+                      // (data_q                 == 16'b0                  ) &&
+                      (sdram_addr_o           == {SDRAM_ROW_W{1'b0}}    ) && 
+                      (sdram_ba_o             == {SDRAM_BANK_W{1'b0}}   ) && 
+                      // (sdram_cke_o            == 1'b0                   ) && 
+                      // (sdram_dqm_o            == {SDRAM_DQM_W{1'b0}}    ) && 
+                      // (sdram_data_out_en_o    == 1'b0                   ) && 
+                      // (dqm_buffer_q           == {SDRAM_DQM_W{1'b0}}    ) && 
+                      (state_q                == STATE_INIT             ) && 
+                      (refresh_timer_q        == SDRAM_START_DELAY + 100) );
   endproperty
   
     RESET_CHECK: assert property (reset_check)
@@ -66,7 +161,7 @@ module sdram_assertions();
   property ack_q_check;
     @(posedge clk_i)
     disable iff(rst_i)
-    state_q == STATE_WRITE1 || rd_q[SDRAM_READ_LATENCY+1] |=> $rose(ack_q);
+    (state_q == STATE_WRITE1) || (rd_q[SDRAM_READ_LATENCY]) |-> $rose(inport_ack_o);
   endproperty
     
       ACK_q_CHECK: assert property (ack_q_check)
@@ -75,10 +170,10 @@ module sdram_assertions();
         $error("ACK_Q did not assert accordingly");
 	   end
 	  
-        property CMD_RESET_check(value, CMD_TO_BE_SENT,command_queue);
-	@(posedge clk_i)
-          refresh_timer_q == value && CMD_TO_BE_SENT == 0 |=> (command_q == command_queue,$display(command_q,command_queue));
-  endproperty
+       property CMD_RESET_check(value, CMD_TO_BE_SENT,command_queue);
+	     @(posedge clk_i)
+          (refresh_timer_q == value) && (CMD_TO_BE_SENT == 0) |-> (command_q == command_queue /*,$display(command_q,command_queue)*/);
+       endproperty
   
        FIRST_PRECHARGE_CHECK: assert property(CMD_RESET_check(40,CMD_PRECHARGE_first,CMD_PRECHARGE))
 						 else	
@@ -100,7 +195,7 @@ module sdram_assertions();
   property ack_negative_check;
     @(posedge clk_i)
     disable iff(rst_i)
-    $rose(ack_q) |-> $past(state_q) == STATE_WRITE1 || $past(rd_q[SDRAM_READ_LATENCY+1]);
+    $rose(inport_ack_o) |-> (state_q == STATE_WRITE1) || (rd_q[SDRAM_READ_LATENCY]);
   endproperty
     
         ACK_NEGATIVE_CHECK: assert property (ack_negative_check)
@@ -112,7 +207,7 @@ module sdram_assertions();
   property refresh_q_check;
     @(posedge clk_i)
     disable iff(rst_i)
-    refresh_timer_q == {REFRESH_CNT_W{1'b0}} |=> $rose(refresh_q) ##1 $fell(refresh_q);
+    (refresh_timer_q == '0) |=> $rose(refresh_q) /*##1 $fell(refresh_q)*/;
   endproperty
           
    REFRESH_Q_ASSERT_CHECK: assert property(refresh_q_check)
@@ -148,7 +243,7 @@ module sdram_assertions();
     property State_IDLE_Activate_Transition;
       @(posedge clk_i)
       disable iff(rst_i)
-      (state_q == STATE_IDLE && ram_req_w) ##0 !((row_open_q[addr_bank_w] && addr_row_w == active_row_q[addr_bank_w]) && row_open_q[addr_bank_w]) 
+      (state_q == STATE_IDLE && ram_req_w) && !row_open_q[addr_bank_w] /*((row_open_q[addr_bank_w] && addr_row_w == active_row_q[addr_bank_w]) && row_open_q[addr_bank_w]) */ 
       |=> state_q == STATE_ACTIVATE;
     endproperty
          

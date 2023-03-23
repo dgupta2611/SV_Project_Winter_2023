@@ -11,10 +11,8 @@ logic           clk_i;
 logic           rst_i;
 logic  [  3:0]  inport_wr_i = 0;
 logic           inport_rd_i = 0;
-// logic  [  7:0]  inport_len_i;
 logic  [ 31:0]  inport_addr_i = 0;
 logic  [ 31:0]  inport_write_data_i;
-// logic  [ 15:0]  sdram_data_input_i;
 
 // Controller Outputs
 logic          inport_accept_o;
@@ -30,7 +28,6 @@ logic          sdram_we_o;
 logic [  1:0]  sdram_dqm_o;
 logic [ 12:0]  sdram_addr_o;
 logic [  1:0]  sdram_ba_o;
-// logic [ 15:0]  sdram_data_output_o;
 logic          sdram_data_out_en_o;
 
 // Bus
@@ -50,6 +47,42 @@ mt48lc16m16a2  MEM_mt48lc16m16a2    (.Dq     (sdram_data_bus_io),
                                      .We_n   (sdram_we_o), 
                                      .Dqm    (sdram_dqm_o));
 
+bind sdram_axi_core sdram_assertions ramAssert (
+    // Inputs
+    clk_i,
+    rst_i,
+    inport_wr_i,
+    inport_rd_i,
+    inport_addr_i,
+    inport_write_data_i,
+    
+    // Outputs
+    inport_accept_o,
+    inport_ack_o,
+    inport_error_o,
+    inport_read_data_o,
+    sdram_clk_o,
+    sdram_cke_o,
+    sdram_cs_o,
+    sdram_ras_o,
+    sdram_cas_o,
+    sdram_we_o,
+    sdram_dqm_o,
+    sdram_addr_o,
+    sdram_ba_o,
+    sdram_data_out_en_o,
+
+    // Bus
+    sdram_data_bus_io,
+
+    // Internal states
+    refresh_timer_q,
+    refresh_q,
+    rd_q,
+    state_q,
+    row_open_q,
+    active_row_q);
+
 ///////////////////////////////////////////////////////////////////////////////
 
 ////////////////////////////// Declarations ///////////////////////////////////
@@ -58,8 +91,6 @@ ref_mem memModel;
 
 logic intf2cont_datSample;
 
-// data_rand #(16) sdram2cont_data;
-data_rand #(32) intf2cont_data;
 logic [31:0] rand_data_intf2cont;
 
 logic [31:0] refMemReadData;
@@ -78,7 +109,7 @@ end
 
 /////////////////////////// Read/Write Tasks////////////////////////////////////////////////////
 
-task automatic WriteMem(input [3:0] mask, input [31:0] wr_addr, const ref ref_mem memModel);
+task automatic WriteMem(input [3:0] mask, input [31:0] wr_addr, input [31:0] wr_data, const ref ref_mem memModel);
 
     logic [35:0] wd;
 
@@ -89,24 +120,20 @@ task automatic WriteMem(input [3:0] mask, input [31:0] wr_addr, const ref ref_me
 
     inport_wr_i   = mask;
     inport_addr_i = wr_addr;
-    intf2cont_datSample = 1;
+    inport_write_data_i = wr_data;
 
-    @(posedge clk_i) begin
-        intf2cont_datSample = 0;  // At the edge, sample random inport_write_data_i data and then retain
+    // Updating the associative array with the data        
+    memModel.write(wr_addr[24:2], wr_data, mask);
 
-        // Updating the associative array with the data        
-        memModel.write(wr_addr[24:2], rand_data_intf2cont, mask);
+    // Making sure the reference memory got updated
+    wd = memModel.read(wr_addr[24:2]);
+    $display("Memory Model written for Address = %h Word 1 = %h Word 0 = %h Mask = %h", wr_addr, 
+                                                                                        wd[31:16], 
+                                                                                        wd[15:0], 
+                                                                                        wd[35:32]);
 
-        // Making sure the reference memory got updated
-        wd = memModel.read(wr_addr[24:2]);
-        $display("Memory Model written for Address = %h Word 1 = %h Word 0 = %h Mask = %h", wr_addr, 
-                                                                                            wd[31:16], 
-                                                                                            wd[15:0], 
-                                                                                            wd[35:32]);
-    end
-
-    wait(inport_accept_o);
-    wait(~inport_accept_o);
+    wait(inport_accept_o);  // WRITE0
+    wait(~inport_accept_o); // WRITE1
 
     inport_wr_i = '0;
     
@@ -118,11 +145,11 @@ task automatic ReadMem(input [31:0] rd_addr, const ref ref_mem memModel);
     inport_rd_i   = 1;
     inport_addr_i = rd_addr;
 
-    wait(inport_accept_o);
+    wait(inport_accept_o); // READ
 
     refMemReadSuccess = memModel.M.exists(rd_addr[24:2]);
 
-    assert(refMemReadSuccess) else 
+    if(~refMemReadSuccess) 
         $warning("Trying to access unwritten Memory location");
 
     if(refMemReadSuccess) 
@@ -168,15 +195,17 @@ end
 ////////////////////////// Main Simulation Block //////////////////////////////
 initial begin
 
-    int numOps_WrHeavy = 550;
-    int numOps_Random  = 450;
+    int numOps_WrHeavy;
+    int numOps_Random;
 
     logic [31:0] fullAddr;
     logic [3:0]  mask;
+    logic [31:0] wrData;
 
     int write;
     int delay;
 
+    data_rand #(32) randData;
     addr_rand #(32) randAddr;
     wrBytes         randMask;
     ops_rand  #(80) wr80Percent;
@@ -184,13 +213,16 @@ initial begin
     delay_rand      randDelay;
 
     // sdram2cont_data = new();
-    intf2cont_data  = new();
+    randData        = new();
     memModel        = new();
     randAddr        = new();
     wr80Percent     = new();
     wr50Percent     = new();
     randMask        = new();
     randDelay       = new();
+
+    numOps_WrHeavy = 550;
+    numOps_Random  = 450;
 
     intf2cont_datSample = 1;
 
@@ -201,9 +233,9 @@ initial begin
     #((SDRAM_START_DELAY+200)*CYCLE_TIME_NS);
     $display("SDRAM Ready");
 
-    fullAddr = '0;    WriteMem(4'hf, fullAddr, memModel); 
-    fullAddr = 32'd4; WriteMem(4'hf, fullAddr, memModel);
-    fullAddr = 32'd8; WriteMem(4'hf, fullAddr, memModel);
+    fullAddr = '0;    assert(randData.randomize()) else $error("Data randomization failed"); wrData = randData.data; WriteMem(4'hf, fullAddr, wrData, memModel); 
+    fullAddr = 32'd4; assert(randData.randomize()) else $error("Data randomization failed"); wrData = randData.data; WriteMem(4'hf, fullAddr, wrData, memModel);
+    fullAddr = 32'd8; assert(randData.randomize()) else $error("Data randomization failed"); wrData = randData.data; WriteMem(4'hf, fullAddr, wrData, memModel);
     
     // `DELAY(5);
     fullAddr = '0   ; ReadMem(fullAddr, memModel);
@@ -212,17 +244,20 @@ initial begin
 
 
     while(numOps_WrHeavy) begin
+        assert(randData.randomize())    else $error("Data randomization failed");
         assert(randAddr.randomize())    else $error("Addr randomization failed");
         assert(randMask.randomize())    else $error("Mask randomization failed");
         assert(wr80Percent.randomize()) else $error("wr80 randomization failed");
+        assert(randDelay.randomize())   else $error("Delay randomization failed");
 
+        wrData   = randData.data;
         fullAddr = randAddr.addr;
         mask     = randMask.mask;
         write    = wr80Percent.issueWr;
         delay    = randDelay.delay;
 
         if(write) begin
-            WriteMem(mask, fullAddr, memModel);
+            WriteMem(mask, fullAddr, wrData, memModel);
         end
         else begin
             ReadMem(fullAddr, memModel);    
@@ -234,17 +269,20 @@ initial begin
     end
 
     while(numOps_Random) begin
+        assert(randData.randomize())    else $error("Data randomization failed");
         assert(randAddr.randomize())    else $error("Addr randomization failed");
         assert(randMask.randomize())    else $error("Mask randomization failed");
         assert(wr50Percent.randomize()) else $error("wr50 randomization failed");
+        assert(randDelay.randomize())   else $error("Delay randomization failed");
 
+        wrData   = randData.data;
         fullAddr = randAddr.addr;
         mask     = randMask.mask;
         write    = wr50Percent.issueWr;
         delay    = randDelay.delay;
 
         if(write) begin
-            WriteMem(mask, fullAddr, memModel);
+            WriteMem(mask, fullAddr, wrData, memModel);
         end
         else begin
             ReadMem(fullAddr, memModel);    
@@ -261,26 +299,5 @@ initial begin
 
 end
 ////////////////////////////////////////////////////////////////////////////////////
-
-////////////////// Driving the wr BUS from interface //////////////////////////////
-// logic [15:0] rand_data_sdram2cont;
-
-always @(posedge clk_i) begin
-
-    // assert (sdram2cont_data.randomize());
-    assert (intf2cont_data.randomize()) else begin
-       $error("Data Randomization failed"); 
-    end
-
-    // sdram_data_input_i = sdram2cont_data.data;
-    // rand_data_sdram2cont = sdram2cont_data.data;
-
-    // Implicit type cast from class definitions::data_rand to logic [31:0]
-    rand_data_intf2cont  = intf2cont_datSample ? intf2cont_data.data : rand_data_intf2cont;
-    inport_write_data_i  = rand_data_intf2cont;
-end
-
-// assign sdram_data_bus_io   = ~sdram_data_out_en_o ? rand_data_sdram2cont : 'bz;
-/////////////////////////////////////////////////////////////////////////////////////
 
 endmodule
