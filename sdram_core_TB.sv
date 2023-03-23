@@ -17,7 +17,6 @@ logic  [ 31:0]  inport_write_data_i;
 // Controller Outputs
 logic          inport_accept_o;
 logic          inport_ack_o;
-logic          inport_error_o;
 logic [ 31:0]  inport_read_data_o;
 logic          sdram_clk_o;
 logic          sdram_cke_o;
@@ -59,7 +58,6 @@ bind sdram_core sdram_assertions ramAssert (
     // Outputs
     inport_accept_o,
     inport_ack_o,
-    inport_error_o,
     inport_read_data_o,
     sdram_clk_o,
     sdram_cke_o,

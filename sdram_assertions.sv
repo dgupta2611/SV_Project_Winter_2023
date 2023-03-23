@@ -12,7 +12,6 @@ import definitions::*;
     // Outputs
     input          inport_accept_o,
     input          inport_ack_o,
-    input          inport_error_o,
     input [ 31:0]  inport_read_data_o,
     input          sdram_clk_o,
     input          sdram_cke_o,

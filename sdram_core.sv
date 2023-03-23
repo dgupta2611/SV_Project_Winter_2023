@@ -45,7 +45,6 @@ module sdram_core
     // Outputs
     output          inport_accept_o,
     output          inport_ack_o,
-    output          inport_error_o,
     output [ 31:0]  inport_read_data_o,
     output          sdram_clk_o,
     output          sdram_cke_o,
@@ -116,7 +115,6 @@ assign ram_req_w = (ram_wr_w != 4'b0) | ram_rd_w;
 
 assign inport_ack_o       = ram_ack_w;
 assign inport_read_data_o = ram_ack_w ? ram_read_data_w : 'd0;
-assign inport_error_o     = 1'b0;
 assign inport_accept_o    = ram_accept_w;
 
 //-----------------------------------------------------------------
