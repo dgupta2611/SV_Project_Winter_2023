@@ -67,6 +67,7 @@ import definitions::*;
   localparam STATE_PRECHARGE   = 4'd8;
   localparam STATE_REFRESH     = 4'd9;
 
+
 //ASSERTION VARIABLES
  logic cke_initialization_done,CMD_PRECHARGE_first,CMD_LOAD_MODE_first;
  logic [1:0] CMD_REFRESH_first;
@@ -123,110 +124,105 @@ import definitions::*;
    end
   
   //Property for Cke_q check
-  property cke_q_check;
-    @(posedge rst_i)
+  property cke_q_check_p;
+    @(posedge clk_i)
     disable iff(rst_i)
     refresh_timer_q == 50 && cke_initialization_done==0 |=> $rose(sdram_cke_o) ##0 sdram_cke_o[*0:$] ;
   endproperty
   
   
   
-  CKE_Q_ASSERT_CHECK:assert property (cke_q_check)
+  CKE_Q_ASSERT_CHECK_a:assert property (cke_q_check_p)
     else
       begin
         $error("CKE_Q did not assert as expected");
       end
   
   //Property for Reset check for all signals.
-  property reset_check;
+  property reset_check_p;
     @(posedge clk_i)
     $rose(rst_i) |=> ((command_q              == CMD_NOP                ) && 
-                      // (data_q                 == 16'b0                  ) &&
                       (sdram_addr_o           == {SDRAM_ROW_W{1'b0}}    ) && 
                       (sdram_ba_o             == {SDRAM_BANK_W{1'b0}}   ) && 
-                      // (sdram_cke_o            == 1'b0                   ) && 
-                      // (sdram_dqm_o            == {SDRAM_DQM_W{1'b0}}    ) && 
-                      // (sdram_data_out_en_o    == 1'b0                   ) && 
-                      // (dqm_buffer_q           == {SDRAM_DQM_W{1'b0}}    ) && 
                       (state_q                == STATE_INIT             ) && 
                       (refresh_timer_q        == SDRAM_START_DELAY + 100) );
   endproperty
   
-    RESET_CHECK: assert property (reset_check)
+    RESET_CHECK_a: assert property (reset_check_p)
     else
       begin
         $error("Reset signals not matching with expected values");
       end
   	
-  property ack_q_check;
+  property ack_q_check_p;
     @(posedge clk_i)
     disable iff(rst_i)
     (state_q == STATE_WRITE1) || (rd_q[SDRAM_READ_LATENCY]) |-> $rose(inport_ack_o);
   endproperty
     
-      ACK_q_CHECK: assert property (ack_q_check)
+      ACK_q_CHECK_a: assert property (ack_q_check_p)
     else
       begin
         $error("ACK_Q did not assert accordingly");
 	   end
 	  
-       property CMD_RESET_check(value, CMD_TO_BE_SENT,command_queue);
+       property CMD_RESET_check_p(value, CMD_TO_BE_SENT,command_queue);
 	     @(posedge clk_i)
-          (refresh_timer_q == value) && (CMD_TO_BE_SENT == 0) |-> (command_q == command_queue /*,$display(command_q,command_queue)*/);
+          (refresh_timer_q == value) && (CMD_TO_BE_SENT == 0) |-> (command_q == command_queue);
        endproperty
   
-       FIRST_PRECHARGE_CHECK: assert property(CMD_RESET_check(40,CMD_PRECHARGE_first,CMD_PRECHARGE))
+       FIRST_PRECHARGE_CHECK_a: assert property(CMD_RESET_check_p(40,CMD_PRECHARGE_first,CMD_PRECHARGE))
 						 else	
 							$error("CMD_PRECHARGE FIRST CHECK FAILED");
 							
-         FIRST_REFRESH_CHECK_30: assert property(CMD_RESET_check(30,CMD_REFRESH_first[0],CMD_REFRESH))
+         FIRST_REFRESH_CHECK_30_a: assert property(CMD_RESET_check_p(30,CMD_REFRESH_first[0],CMD_REFRESH))
 						  else
 							$error("CMD_REFRESH first at 30 check");
    
-           SECOND_REFRESH_CHECK_20:assert property(CMD_RESET_check(20,CMD_REFRESH_first[1],CMD_REFRESH))
+           SECOND_REFRESH_CHECK_20_a:assert property(CMD_RESET_check_p(20,CMD_REFRESH_first[1],CMD_REFRESH))
 						  else
 							$error("CMD_REFRESH first at 20 check");
 							
-             CMD_LOAD_MODE_first_CHECK :assert property(CMD_RESET_check(10,CMD_LOAD_MODE_first,CMD_LOAD_MODE))
+             CMD_LOAD_MODE_first_CHECK_a :assert property(CMD_RESET_check_p(10,CMD_LOAD_MODE_first,CMD_LOAD_MODE))
 							  else
 								$error("CMD_LOAD_MODE_first_CHECK first at 10 check");
   
   
-  property ack_negative_check;
+  property ack_negative_check_p;
     @(posedge clk_i)
     disable iff(rst_i)
     $rose(inport_ack_o) |-> (state_q == STATE_WRITE1) || (rd_q[SDRAM_READ_LATENCY]);
   endproperty
     
-        ACK_NEGATIVE_CHECK: assert property (ack_negative_check)
+        ACK_NEGATIVE_CHECK_a: assert property (ack_negative_check_p)
     else
       begin
         $error("ACK NEGATIVE CHECK FAILED ASSERTED AT UNEXPECTED POINT");
       end
   
-  property refresh_q_check;
+  property refresh_q_check_p;
     @(posedge clk_i)
     disable iff(rst_i)
-    (refresh_timer_q == '0) |=> $rose(refresh_q) /*##1 $fell(refresh_q)*/;
+    (refresh_timer_q == '0) |=> $rose(refresh_q);
   endproperty
           
-   REFRESH_Q_ASSERT_CHECK: assert property(refresh_q_check)
+   REFRESH_Q_ASSERT_CHECK_a: assert property(refresh_q_check_p)
             			   else
                            $error("REFRESH_Q_NOT ASSERTED AS EXPECTED");
      
      
-   property state_init_idle_transition;
+   property state_init_idle_transition_p;
      @(posedge clk_i)
      disable iff(rst_i)
      state_q == STATE_INIT && refresh_q |=> state_q==STATE_IDLE;
    endproperty
      
    
-     STATE_IDLE_TRANSITION_CHECK:assert property(state_init_idle_transition)
+     STATE_IDLE_TRANSITION_CHECK_a:assert property(state_init_idle_transition_p)
        						     else
                               $error("STATE_IDLE_TRANSITION from INIT NOT HAPPENED");
        
-    property IDLE_PRECHARGE_Transition;
+    property IDLE_PRECHARGE_Transition_p;
       @(posedge clk_i)
       disable iff(rst_i)
       state_q == STATE_IDLE && refresh_q |->  if(|row_open_q)
@@ -236,18 +232,18 @@ import definitions::*;
     endproperty
        
        
-       STATE_IDLE_PRECHARGE_Transition:assert property(IDLE_PRECHARGE_Transition)
+       STATE_IDLE_PRECHARGE_Transition_a:assert property(IDLE_PRECHARGE_Transition_p)
          else
            $error("IDLE_PRECHARGE TRANSITION FAILED");
          
-    property State_IDLE_Activate_Transition;
+    property State_IDLE_Activate_Transition_p;
       @(posedge clk_i)
       disable iff(rst_i)
-      (state_q == STATE_IDLE && ram_req_w) && !row_open_q[addr_bank_w] /*((row_open_q[addr_bank_w] && addr_row_w == active_row_q[addr_bank_w]) && row_open_q[addr_bank_w]) */ 
+      (state_q == STATE_IDLE && ram_req_w) && !row_open_q[addr_bank_w] 
       |=> state_q == STATE_ACTIVATE;
     endproperty
          
-         assert property(State_IDLE_Activate_Transition)
+         State_IDLE_Activate_Transition_a: assert property(State_IDLE_Activate_Transition_p)
            else
              $error("STATE_ACTIVATE Transition from IDLE failed");
  initial

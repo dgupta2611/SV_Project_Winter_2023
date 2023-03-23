@@ -1,6 +1,6 @@
 `define DELAY(n) repeat(n) @(posedge clk_i)
 
-module sdram_axi_core_TB();
+module sdram_core_TB();
 
 `timescale 1ns / 1ps
 
@@ -35,7 +35,7 @@ wire  [15:0]   sdram_data_bus_io;
 
 
 /////////////////////////////// Instantiations ////////////////////////////////
-sdram_axi_core sdram_axi_controller (.*);
+sdram_core sdram_controller (.*);
 mt48lc16m16a2  MEM_mt48lc16m16a2    (.Dq     (sdram_data_bus_io), 
                                      .Addr   (sdram_addr_o), 
                                      .Ba     (sdram_ba_o), 
@@ -47,7 +47,7 @@ mt48lc16m16a2  MEM_mt48lc16m16a2    (.Dq     (sdram_data_bus_io),
                                      .We_n   (sdram_we_o), 
                                      .Dqm    (sdram_dqm_o));
 
-bind sdram_axi_core sdram_assertions ramAssert (
+bind sdram_core sdram_assertions ramAssert (
     // Inputs
     clk_i,
     rst_i,
@@ -90,8 +90,6 @@ genvar i;
 ref_mem memModel;
 
 logic intf2cont_datSample;
-
-logic [31:0] rand_data_intf2cont;
 
 logic [31:0] refMemReadData;
 logic [3:0]  refMemReadMask;
@@ -164,16 +162,6 @@ endtask
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 ///////////////////// Assertions to check RD data against Ref Mem Data ///////////////////////////////
-
-// always_ff @(posedge clk_i) begin
-//     if(inport_ack_o && ~sdram_data_out_en_o) begin
-//         $display("Memory Model Read for Address = %h Word 1 = %h Word 0 = %h Mask = %h \n", 
-//                   $past(inport_addr_i,         SDRAM_READ_LATENCY), 
-//                   $past(refMemReadData[31:16], SDRAM_READ_LATENCY), 
-//                   $past(refMemReadData[15:0],  SDRAM_READ_LATENCY), 
-//                   $past(refMemReadMask,        SDRAM_READ_LATENCY));
-//     end
-// end
 
 for (i = 0; i < 4; i++) begin
     
