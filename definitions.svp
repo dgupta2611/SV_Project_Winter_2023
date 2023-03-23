@@ -20,13 +20,13 @@ package definitions;
 
 	// SDRAM timing
 	parameter SDRAM_MHZ              = 50;
-	parameter CYCLE_TIME_NS          = 1000 / SDRAM_MHZ;
+	parameter CYCLE_TIME_NS          = 1000 / SDRAM_MHZ;  //20
 	parameter SDRAM_READ_LATENCY     = 2;	
-	parameter SDRAM_TRCD_CYCLES 	 = (20 + (CYCLE_TIME_NS-1)) / CYCLE_TIME_NS;
-	parameter SDRAM_TRP_CYCLES  	 = (20 + (CYCLE_TIME_NS-1)) / CYCLE_TIME_NS;
-	parameter SDRAM_TRFC_CYCLES 	 = (60 + (CYCLE_TIME_NS-1)) / CYCLE_TIME_NS;
+	parameter SDRAM_TRCD_CYCLES 	 = (20 + (CYCLE_TIME_NS-1)) / CYCLE_TIME_NS;  //1
+	parameter SDRAM_TRP_CYCLES  	 = (20 + (CYCLE_TIME_NS-1)) / CYCLE_TIME_NS;  //1
+	parameter SDRAM_TRFC_CYCLES 	 = (60 + (CYCLE_TIME_NS-1)) / CYCLE_TIME_NS;  //3
 	parameter SDRAM_START_DELAY      = 100000 / (1000 / SDRAM_MHZ);                // 5000 := 100uS
-	parameter SDRAM_REFRESH_CYCLES   = ((64000*SDRAM_MHZ) / (2 ** SDRAM_ROW_W))-1;
+	parameter SDRAM_REFRESH_CYCLES   = ((64000*SDRAM_MHZ) / (2 ** SDRAM_ROW_W))-1;  //389
 
 	class data_rand #(parameter DAT_WID = 16);
 		

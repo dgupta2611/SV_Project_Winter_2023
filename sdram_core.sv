@@ -520,7 +520,7 @@ begin
             command_q               <= CMD_PRECHARGE;
             addr_q[ALL_BANKS_BIT]   <= 1'b1;
         end
-        // 2 x REFRESH (with at least tREF wait)
+        // 2 x REFRESH (with at least tRFC wait)
         else if (refresh_timer_q == 20 || refresh_timer_q == 30)
         begin
             command_q <= CMD_REFRESH;
