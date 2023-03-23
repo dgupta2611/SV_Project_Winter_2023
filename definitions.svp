@@ -13,7 +13,7 @@ package definitions;
 	parameter SDRAM_DATA_W           = 16;
  	parameter SDRAM_BANK_W           = 2;
  	parameter SDRAM_COL_W            = 9;
- 	parameter SDRAM_ROW_W            = SDRAM_ADDR_W - SDRAM_COL_W - SDRAM_BANK_W; // 15
+ 	parameter SDRAM_ROW_W            = SDRAM_ADDR_W - SDRAM_COL_W - SDRAM_BANK_W; // 13
  	parameter SDRAM_DQM_W            = 2;
  	
 	parameter SDRAM_BANKS            = 2 ** SDRAM_BANK_W;	
@@ -30,12 +30,58 @@ package definitions;
 
 	class data_rand #(parameter DAT_WID = 16);
 		
-		randc bit [DAT_WID-1:0] data;
+		rand bit [DAT_WID-1:0] data;
 
-		constraint dat_contr_upper_half { data[DAT_WID-1:DAT_WID/2] > 0; data[DAT_WID-1:DAT_WID/2] < 16; }
-		constraint dat_contr_lower_half { data[DAT_WID/2-1:0] > 0; data[DAT_WID/2-1:0] < 16; }	
+		// constraint dat_constr_upper_half { data[DAT_WID-1:DAT_WID/2] > 0;       data[DAT_WID-1:DAT_WID/2] < 255; }
+		// constraint dat_constr_lower_half { data[DAT_WID/2-1:0]       > 0;       data[DAT_WID/2-1:0]       < 255; }	
 		
+	endclass
+
+	class addr_rand #(parameter ADR_WID = 32);
+		
+		rand bit [31:0] addr;
+
+		int col[8] = '{255, 0, 35, 77, 155, 213, 199, 222};
+		int row[4] = '{666, 1024, 5, 5050};
+
+		constraint adr_constr_LSB { addr[0] == 0; }
+		constraint adr_constr_BYS { addr[1] == 0; }
+
+		// Constraining total number of columns to 8
+		constraint adr_constr_COL { addr[SDRAM_COL_W:2] inside {col}; }	
+
+		// Bank 0: 40%; Bank 1: 20%; Bank 2: 20%; Bank 3: 20%; 
+		constraint adr_constr_BNK { addr[SDRAM_COL_W+2:SDRAM_COL_W+2-1] dist {0:/40, [1:3]:/60}; }
+
+		// Constraining total number of rows to 4 
+		constraint adr_constr_ROW { addr[SDRAM_ADDR_W:SDRAM_COL_W+2+1] inside {row}; }
+
+		// MSBs
+		constraint adr_constr_TAG { addr[31:SDRAM_ADDR_W+1] == 0; }
+
 	endclass 
+
+	class wrBytes;
+		rand bit [3:0] mask;
+		constraint c1 {mask dist {15:/70, [1:14]:/30};}
+		constraint c2 {mask > 0;}
+
+	endclass
+
+	class ops_rand #(parameter wrPercent = 50);
+		rand bit issueWr;
+		constraint c {issueWr dist {1:/wrPercent, 0:/(100-wrPercent)}; }
+	endclass
+
+
+	class delay_rand;
+		rand int delay;
+
+		// More weightage for 0 delay between ops
+		int values [5] = '{0, 10, 0, 100, 25};
+
+		constraint c {delay inside {values};} 
+	endclass
 
 	class ref_mem;
 		logic [31:0] M     [logic [22:0]];
